@@ -8,7 +8,7 @@ const TOTAL_FRAMES = 120; // 0 to 119
 export default function ScrollyCanvas({ children }: { children?: React.ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [images, setImages] = useState<HTMLImageElement[]>([]);
+  const imagesRef = useRef<(HTMLImageElement | null)[]>(new Array(TOTAL_FRAMES).fill(null));
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
 
@@ -24,52 +24,35 @@ export default function ScrollyCanvas({ children }: { children?: React.ReactNode
   // Preload images
   useEffect(() => {
     let isCancelled = false;
+    let loadedCount = 0;
 
-    const preloadImages = async () => {
-      const loadedImages: HTMLImageElement[] = [];
-      let loadedCount = 0;
-      const loadPromises = [];
-
+    const preloadImages = () => {
       for (let i = 0; i < TOTAL_FRAMES; i++) {
         const img = new Image();
-        // File format: frame_000_delay-0.066s.png
-        // Need to pad start with zeros to match standard formatting: e.g. 000, 001, ..., 119
         const indexStr = i.toString().padStart(3, "0");
         const src = `/portfolio/frame_${indexStr}_delay-0.066s.png`;
         img.src = src;
         
-        const p = new Promise((resolve) => {
-          img.onload = () => {
-            loadedCount++;
-            if (!isCancelled) {
-              setLoadingProgress(Math.round((loadedCount / TOTAL_FRAMES) * 100));
-            }
-            // initial render to prevent blank screen
-            if (i === 0 && canvasRef.current) {
-              renderFrame(0, [img]); 
-            }
-            resolve(null);
-          };
-          img.onerror = () => {
-            console.error(`Failed to load ${src}`);
-            loadedCount++;
-            if (!isCancelled) {
-              setLoadingProgress(Math.round((loadedCount / TOTAL_FRAMES) * 100));
-            }
-            // Resolve anyway to not break the sequence
-            resolve(null);
-          };
-        });
-
-        loadPromises.push(p);
-        loadedImages.push(img);
-      }
-
-      await Promise.all(loadPromises);
-
-      if (!isCancelled) {
-        setImages(loadedImages);
-        setIsLoaded(true);
+        img.onload = () => {
+          if (isCancelled) return;
+          imagesRef.current[i] = img;
+          loadedCount++;
+          setLoadingProgress(Math.round((loadedCount / TOTAL_FRAMES) * 100));
+          
+          if (i === 0) {
+            renderFrame(0);
+            setIsLoaded(true); // Unlock scroll/view immediately after 1st frame
+          }
+        };
+        
+        img.onerror = () => {
+          if (isCancelled) return;
+          loadedCount++;
+          setLoadingProgress(Math.round((loadedCount / TOTAL_FRAMES) * 100));
+          
+          // Keep it unlocked if error on first frame to prevent infinite loading
+          if (i === 0) setIsLoaded(true);
+        };
       }
     };
 
@@ -81,14 +64,13 @@ export default function ScrollyCanvas({ children }: { children?: React.ReactNode
   }, []);
 
   // Stable render function
-  const renderFrame = useCallback((index: number, imgs: HTMLImageElement[] = images) => {
-    if (!canvasRef.current || imgs.length === 0) return;
+  const renderFrame = useCallback((index: number) => {
+    if (!canvasRef.current || !imagesRef.current[index]) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const img = imgs[index];
-    if (!img) return;
+    const img = imagesRef.current[index]!;
 
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
@@ -106,7 +88,7 @@ export default function ScrollyCanvas({ children }: { children?: React.ReactNode
 
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
-  }, [images]);
+  }, []);
 
   // Use Framer Motion event to trigger render only on scroll change
   useMotionValueEvent(frameIndex, "change", (latest) => {
