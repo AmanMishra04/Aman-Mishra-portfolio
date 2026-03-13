@@ -45,6 +45,7 @@ export default function Overlay() {
           style={{ opacity: opacity2, y: y2 }}
           className="absolute left-8 md:left-24 top-1/2 -translate-y-1/2 max-w-lg"
         >
+          <h2 className="text-3xl md:text-6xl font-semibold leading-tight text-white mb-4">
             Building modern <br />
             <span className="text-gray-400">digital experiences.</span>
           </h2>
